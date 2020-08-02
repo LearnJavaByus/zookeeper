@@ -789,21 +789,33 @@ public class DataTree {
         return this.processTxn(header, txn, false);
     }
 
+    /**
+     * 用于处理事务，即将事务操作应用到DataTree内存数据库中，以恢复成最新的数据。
+     * @param header
+     * @param txn
+     * @param isSubTxn
+     * @return
+     */
     public ProcessTxnResult processTxn(TxnHeader header, Record txn, boolean isSubTxn)
     {
+        // 事务处理结果
         ProcessTxnResult rc = new ProcessTxnResult();
 
         try {
+            // 从事务头中解析出相应属性并保存至rc中
             rc.clientId = header.getClientId();
             rc.cxid = header.getCxid();
             rc.zxid = header.getZxid();
             rc.type = header.getType();
             rc.err = 0;
             rc.multiResult = null;
-            switch (header.getType()) {
-                case OpCode.create:
+            switch (header.getType()) { // 确定事务类型
+                case OpCode.create: // 创建结点
+                    // 显示转化
                     CreateTxn createTxn = (CreateTxn) txn;
+                    // 获取创建结点路径
                     rc.path = createTxn.getPath();
+                    // 创建结点
                     createNode(
                             createTxn.getPath(),
                             createTxn.getData(),
@@ -851,43 +863,59 @@ public class DataTree {
                             header.getZxid(), header.getTime(), stat);
                     rc.stat = stat;
                     break;
-                case OpCode.delete:
+                case OpCode.delete:      // 删除结点
                 case OpCode.deleteContainer:
+                    // 显示转化
                     DeleteTxn deleteTxn = (DeleteTxn) txn;
+                    // 获取删除结点路径
                     rc.path = deleteTxn.getPath();
+                    // 删除结点
                     deleteNode(deleteTxn.getPath(), header.getZxid());
                     break;
                 case OpCode.reconfig:
-                case OpCode.setData:
+                case OpCode.setData: // 写入数据
+                    // 显示转化
                     SetDataTxn setDataTxn = (SetDataTxn) txn;
+                    // 获取写入数据结点路径
                     rc.path = setDataTxn.getPath();
+                    // 写入数据
                     rc.stat = setData(setDataTxn.getPath(), setDataTxn
                             .getData(), setDataTxn.getVersion(), header
                             .getZxid(), header.getTime());
                     break;
-                case OpCode.setACL:
+                case OpCode.setACL: // 设置ACL
+                    // 显示转化
                     SetACLTxn setACLTxn = (SetACLTxn) txn;
+                    // 获取路径
                     rc.path = setACLTxn.getPath();
+                    // 设置ACL
                     rc.stat = setACL(setACLTxn.getPath(), setACLTxn.getAcl(),
                             setACLTxn.getVersion());
                     break;
-                case OpCode.closeSession:
+                case OpCode.closeSession: // 关闭会话
+                    // 关闭会话
                     killSession(header.getClientId(), header.getZxid());
                     break;
-                case OpCode.error:
+                case OpCode.error:  // 错误
+                    // 显示转化
                     ErrorTxn errTxn = (ErrorTxn) txn;
+                    // 记录错误
                     rc.err = errTxn.getErr();
                     break;
-                case OpCode.check:
+                case OpCode.check:  // 检查
+                    // 显示转化
                     CheckVersionTxn checkTxn = (CheckVersionTxn) txn;
+                    // 获取路径
                     rc.path = checkTxn.getPath();
                     break;
-                case OpCode.multi:
+                case OpCode.multi:  // 多个事务
+                    // 显示转化
                     MultiTxn multiTxn = (MultiTxn) txn ;
+                    // 获取事务列表
                     List<Txn> txns = multiTxn.getTxns();
                     rc.multiResult = new ArrayList<ProcessTxnResult>();
                     boolean failed = false;
-                    for (Txn subtxn : txns) {
+                    for (Txn subtxn : txns) {  // 遍历事务列表
                         if (subtxn.getType() == OpCode.error) {
                             failed = true;
                             break;
@@ -895,7 +923,8 @@ public class DataTree {
                     }
 
                     boolean post_failed = false;
-                    for (Txn subtxn : txns) {
+                    for (Txn subtxn : txns) {   // 遍历事务列表，确定每个事务类型并进行相应操作
+                        // 处理事务的数据
                         ByteBuffer bb = ByteBuffer.wrap(subtxn.getData());
                         Record record = null;
                         switch (subtxn.getType()) {
@@ -926,10 +955,10 @@ public class DataTree {
                                 throw new IOException("Invalid type of op: " + subtxn.getType());
                         }
                         assert(record != null);
-
+                        // 将bytebuffer转化为record(初始化record的相关属性)
                         ByteBufferInputStream.byteBuffer2Record(bb, record);
 
-                        if (failed && subtxn.getType() != OpCode.error){
+                        if (failed && subtxn.getType() != OpCode.error){  // 失败并且不为error类型
                             int ec = post_failed ? Code.RUNTIMEINCONSISTENCY.intValue()
                                                  : Code.OK.intValue();
 
@@ -937,14 +966,16 @@ public class DataTree {
                             record = new ErrorTxn(ec);
                         }
 
-                        if (failed) {
+                        if (failed) { // 失败
                             assert(subtxn.getType() == OpCode.error) ;
                         }
-
+                        // 生成事务头
                         TxnHeader subHdr = new TxnHeader(header.getClientId(), header.getCxid(),
                                                          header.getZxid(), header.getTime(),
                                                          subtxn.getType());
+                        // 递归调用处理事务
                         ProcessTxnResult subRc = processTxn(subHdr, record, true);
+                        // 保存处理结果
                         rc.multiResult.add(subRc);
                         if (subRc.err != 0 && rc.err == 0) {
                             rc.err = subRc.err ;
@@ -994,6 +1025,7 @@ public class DataTree {
              * case where the snapshot contains data ahead of the zxid associated
              * with the file.
              */
+            // 事务处理结果中保存的zxid大于已经被处理的最大的zxid，则重新赋值
             if (rc.zxid > lastProcessedZxid) {
                 lastProcessedZxid = rc.zxid;
             }
@@ -1014,7 +1046,7 @@ public class DataTree {
          * restore.
          */
         if (header.getType() == OpCode.create &&
-                rc.err == Code.NODEEXISTS.intValue()) {
+                rc.err == Code.NODEEXISTS.intValue()) {  // 处理在恢复数据过程中的结点创建操作
             LOG.debug("Adjusting parent cversion for Txn: " + header.getType() +
                     " path:" + rc.path + " err: " + rc.err);
             int lastSlash = rc.path.lastIndexOf('/');

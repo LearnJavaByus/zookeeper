@@ -44,6 +44,8 @@ import org.apache.zookeeper.txn.TxnHeader;
 /**
  * A collection of utility methods for dealing with file name parsing, 
  * low level I/O file operations and marshalling/unmarshalling.
+ *
+ * 工具类，提供持久化所需的API。
  */
 public class Util {
     private static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -133,12 +135,15 @@ public class Util {
      * @param name the file name to parse
      * @param prefix the file name prefix (snapshot or log)
      * @return zxid
+     * // 从文件名中解析出zxid  从文件名中解析zxid，并且需要从指定的前缀开始。
      */
     public static long getZxidFromName(String name, String prefix) {
         long zxid = -1;
+        // 对文件名进行分割
         String nameParts[] = name.split("\\.");
-        if (nameParts.length == 2 && nameParts[0].equals(prefix)) {
+        if (nameParts.length == 2 && nameParts[0].equals(prefix)) { // 前缀相同
             try {
+                // 转化成长整形
                 zxid = Long.parseLong(nameParts[1], 16);
             } catch (NumberFormatException e) {
             }
@@ -157,22 +162,24 @@ public class Util {
      * @throws IOException
      */
     public static boolean isValidSnapshot(File f) throws IOException {
+        // 文件为空或者非snapshot文件，则返回false
         if (f==null || Util.getZxidFromName(f.getName(), FileSnap.SNAPSHOT_FILE_PREFIX) == -1)
             return false;
 
-        // Check for a valid snapshot
+        // Check for a valid snapshot  // 随机访问文件
         try (RandomAccessFile raf = new RandomAccessFile(f, "r")) {
             // including the header and the last / bytes
             // the snapshot should be at least 10 bytes
-            if (raf.length() < 10) {
+            if (raf.length() < 10) { // 文件大小小于10个字节，返回false
                 return false;
             }
+            // 移动至倒数第五个字节
             raf.seek(raf.length() - 5);
             byte bytes[] = new byte[5];
             int readlen = 0;
             int l;
             while (readlen < 5 &&
-                    (l = raf.read(bytes, readlen, bytes.length - readlen)) >= 0) {
+                    (l = raf.read(bytes, readlen, bytes.length - readlen)) >= 0) { // 将最后五个字节存入bytes中
                 readlen += l;
             }
             if (readlen != bytes.length) {
@@ -183,7 +190,7 @@ public class Util {
             ByteBuffer bb = ByteBuffer.wrap(bytes);
             int len = bb.getInt();
             byte b = bb.get();
-            if (len != 1 || b != '/') {
+            if (len != 1 || b != '/') {  // 最后字符不为"/",不合法
                 LOG.info("Invalid snapshot " + f + " len = " + len
                         + " byte = " + (b & 0xff));
                 return false;
@@ -290,7 +297,9 @@ public class Util {
     {
         if(files==null)
             return new ArrayList<File>(0);
+        // 转化为列表
         List<File> filelist = Arrays.asList(files);
+        // 进行排序，Comparator是关键，根据zxid进行排序
         Collections.sort(filelist, new DataDirFileComparator(prefix, ascending));
         return filelist;
     }

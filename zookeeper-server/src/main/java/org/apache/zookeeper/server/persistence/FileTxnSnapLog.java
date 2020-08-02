@@ -45,18 +45,26 @@ import org.slf4j.LoggerFactory;
  * above the implementations
  * of txnlog and snapshot
  * classes
+ *
+ * 封装了TxnLog和SnapShot。
  */
 public class FileTxnSnapLog {
     //the direcotry containing the
     //the transaction logs
+    // 日志文件目录
     private final File dataDir;
     //the directory containing the
     //the snapshot directory
+    // 快照文件目录
     private final File snapDir;
+    // 事务日志
     private TxnLog txnLog;
+    // 快照
     private SnapShot snapLog;
     private final boolean trustEmptySnapshot;
+    // 版本号
     public final static int VERSION = 2;
+     // 版本
     public final static String version = "version-";
 
     private static final Logger LOG = LoggerFactory.getLogger(FileTxnSnapLog.class);
@@ -75,7 +83,7 @@ public class FileTxnSnapLog {
      * the external apis calling
      * restore to gather information
      * while the data is being
-     * restored.
+     * restored.  用来接收事务应用过程中的回调
      */
     public interface PlayBackListener {
         void onTxnLoaded(TxnHeader hdr, Record rec);
@@ -89,7 +97,7 @@ public class FileTxnSnapLog {
      */
     public FileTxnSnapLog(File dataDir, File snapDir) throws IOException {
         LOG.debug("Opening datadir:{} snapDir:{}", dataDir, snapDir);
-
+        // 在datadir和snapdir下生成version-2目录
         this.dataDir = new File(dataDir, version + VERSION);
         this.snapDir = new File(snapDir, version + VERSION);
 
@@ -102,7 +110,7 @@ public class FileTxnSnapLog {
         trustEmptySnapshot = Boolean.getBoolean(ZOOKEEPER_SNAPSHOT_TRUST_EMPTY);
         LOG.info(ZOOKEEPER_SNAPSHOT_TRUST_EMPTY + " : " + trustEmptySnapshot);
 
-        if (!this.dataDir.exists()) {
+        if (!this.dataDir.exists()) { // datadir存在但无法创建目录，则抛出异常
             if (!enableAutocreate) {
                 throw new DatadirException("Missing data directory "
                         + this.dataDir
@@ -120,7 +128,7 @@ public class FileTxnSnapLog {
             throw new DatadirException("Cannot write to data directory " + this.dataDir);
         }
 
-        if (!this.snapDir.exists()) {
+        if (!this.snapDir.exists()) {  // snapdir存在但无法创建目录，则抛出异常
             // by default create this directory, but otherwise complain instead
             // See ZOOKEEPER-1161 for more details
             if (!enableAutocreate) {
@@ -146,7 +154,7 @@ public class FileTxnSnapLog {
             checkLogDir();
             checkSnapDir();
         }
-
+        // 给属性赋值
         txnLog = new FileTxnLog(this.dataDir);
         snapLog = new FileSnap(this.snapDir);
     }
@@ -210,6 +218,7 @@ public class FileTxnSnapLog {
      */
     public long restore(DataTree dt, Map<Long, Integer> sessions,
                         PlayBackListener listener) throws IOException {
+        // 根据snap文件反序列化dt和sessions..
         long deserializeResult = snapLog.deserialize(dt, sessions);
         FileTxnLog txnLog = new FileTxnLog(dataDir);
         if (-1L == deserializeResult) {
@@ -246,39 +255,47 @@ public class FileTxnSnapLog {
      */
     public long fastForwardFromEdits(DataTree dt, Map<Long, Integer> sessions,
                                      PlayBackListener listener) throws IOException {
+        // 获取比最后处理的zxid+1大的log文件的迭代器
         TxnIterator itr = txnLog.read(dt.lastProcessedZxid+1);
+        // 最大的zxid
         long highestZxid = dt.lastProcessedZxid;
         TxnHeader hdr;
         try {
             while (true) {
                 // iterator points to
                 // the first valid txn when initialized
+                // itr在read函数调用后就已经指向第一个合法的事务
+                // 获取事务头
                 hdr = itr.getHeader();
-                if (hdr == null) {
-                    //empty logs
+                if (hdr == null) {  // 事务头为空
+                    //empty logs // 表示日志文件为空
                     return dt.lastProcessedZxid;
                 }
+                // 事务头的zxid小于snapshot中的最大zxid并且其不为0，则会报错
                 if (hdr.getZxid() < highestZxid && highestZxid != 0) {
                     LOG.error("{}(highestZxid) > {}(next log) for type {}",
                             highestZxid, hdr.getZxid(), hdr.getType());
-                } else {
+                } else { // 重新赋值highestZxid
                     highestZxid = hdr.getZxid();
                 }
                 try {
+                    // 在datatree上处理事务
                     processTransaction(hdr,dt,sessions, itr.getTxn());
                 } catch(KeeperException.NoNodeException e) {
                    throw new IOException("Failed to process transaction type: " +
                          hdr.getType() + " error: " + e.getMessage(), e);
                 }
+                // 每处理完一个事务都会进行回调
                 listener.onTxnLoaded(hdr, itr.getTxn());
-                if (!itr.next())
+                if (!itr.next()) // 已无事务，跳出循环
                     break;
             }
         } finally {
-            if (itr != null) {
+            if (itr != null) { // 迭代器不为空，则关闭
                 itr.close();
             }
         }
+        // 返回最高的zxid
         return highestZxid;
     }
 
@@ -315,13 +332,20 @@ public class FileTxnSnapLog {
      * @param dt the datatree to apply transaction to
      * @param sessions the sessions to be restored
      * @param txn the transaction to be applied
+     *
+     *  根据事务头中记录的事务类型（createSession、closeSession、其他类型）来进行相应的操作，
+     *            对于createSession类型而言，其会将会话和超时时间添加至会话map中，
+     *            对于closeSession而言，会话map会根据客户端的id号删除其会话，
+     *            同时，所有的操作都会调用到dt.processTxn函数
      */
     public void processTransaction(TxnHeader hdr,DataTree dt,
             Map<Long, Integer> sessions, Record txn)
         throws KeeperException.NoNodeException {
+        // 事务处理结果
         ProcessTxnResult rc;
-        switch (hdr.getType()) {
-        case OpCode.createSession:
+        switch (hdr.getType()) {  // 确定事务类型
+        case OpCode.createSession: // 创建会话
+            // 添加进会话
             sessions.put(hdr.getClientId(),
                     ((CreateSessionTxn) txn).getTimeOut());
             if (LOG.isTraceEnabled()) {
@@ -332,18 +356,22 @@ public class FileTxnSnapLog {
                                 + ((CreateSessionTxn) txn).getTimeOut());
             }
             // give dataTree a chance to sync its lastProcessedZxid
+            // 处理事务
             rc = dt.processTxn(hdr, txn);
             break;
-        case OpCode.closeSession:
+        case OpCode.closeSession: // 关闭会话
+            // 会话中移除
             sessions.remove(hdr.getClientId());
             if (LOG.isTraceEnabled()) {
                 ZooTrace.logTraceMessage(LOG,ZooTrace.SESSION_TRACE_MASK,
                         "playLog --- close session in log: 0x"
                                 + Long.toHexString(hdr.getClientId()));
             }
+            // 处理事务
             rc = dt.processTxn(hdr, txn);
             break;
         default:
+            // 处理事务
             rc = dt.processTxn(hdr, txn);
         }
 
@@ -353,7 +381,7 @@ public class FileTxnSnapLog {
          * snapshot. Then when the snapshot is restored, NONODE/NODEEXISTS
          * errors could occur. It should be safe to ignore these.
          */
-        if (rc.err != Code.OK.intValue()) {
+        if (rc.err != Code.OK.intValue()) {  // 忽略处理结果中可能出现的错误
             LOG.debug(
                     "Ignoring processTxn failure hdr: {}, error: {}, path: {}",
                     hdr.getType(), rc.err, rc.path);
@@ -379,10 +407,13 @@ public class FileTxnSnapLog {
     public void save(DataTree dataTree,
             ConcurrentHashMap<Long, Integer> sessionsWithTimeouts)
         throws IOException {
+        // 获取最后处理的zxid
         long lastZxid = dataTree.lastProcessedZxid;
+        // 生成snapshot文件
         File snapshotFile = new File(snapDir, Util.makeSnapshotName(lastZxid));
         LOG.info("Snapshotting: 0x{} to {}", Long.toHexString(lastZxid),
                 snapshotFile);
+        // 序列化datatree、sessionsWithTimeouts至snapshot文件
         snapLog.serialize(dataTree, sessionsWithTimeouts, snapshotFile);
 
     }
