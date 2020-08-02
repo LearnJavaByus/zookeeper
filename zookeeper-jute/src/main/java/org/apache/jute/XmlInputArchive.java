@@ -33,7 +33,7 @@ import org.xml.sax.helpers.DefaultHandler;
  *
  */
 class XmlInputArchive implements InputArchive {
-    
+    // 内部类，值（包含类型和值）
     static private class Value {
         private String type;
         private StringBuffer sb;
@@ -42,13 +42,16 @@ class XmlInputArchive implements InputArchive {
             type = t;
             sb = new StringBuffer();
         }
+        // 添加chars
         public void addChars(char[] buf, int offset, int len) {
             sb.append(buf, offset, len);
         }
+        // 返回value
         public String getValue() { return sb.toString(); }
+        // 返回type
         public String getType() { return type; }
     }
-    
+    // 内部类，XML解析器
     private static class XMLParser extends DefaultHandler {
         private boolean charsValid = false;
         
@@ -57,87 +60,102 @@ class XmlInputArchive implements InputArchive {
         private XMLParser(ArrayList<Value> vlist) {
             valList = vlist;
         }
-        
+        // 文档开始，空的实现
         public void startDocument() throws SAXException {}
-        
+        // 文档结束，空的实现
         public void endDocument() throws SAXException {}
-        
+        // 开始解析元素
         public void startElement(String ns,
                 String sname,
                 String qname,
                 Attributes attrs) throws SAXException {
             charsValid = false;
-            if ("boolean".equals(qname) ||
-                    "i4".equals(qname) ||
-                    "int".equals(qname) ||
-                    "string".equals(qname) ||
-                    "double".equals(qname) ||
-                    "ex:i1".equals(qname) ||
-                    "ex:i8".equals(qname) ||
-                    "ex:float".equals(qname)) {
+            if ("boolean".equals(qname) || // boolean类型
+                    "i4".equals(qname) ||    // 四个字节
+                    "int".equals(qname) ||   // int类型
+                    "string".equals(qname) ||   // String类型
+                    "double".equals(qname) ||   // double类型
+                    "ex:i1".equals(qname) ||  // 一个字节
+                    "ex:i8".equals(qname) ||  // 八个字节
+                    "ex:float".equals(qname)) {  // 基本类型
                 charsValid = true;
+                // 添加至列表
                 valList.add(new Value(qname));
             } else if ("struct".equals(qname) ||
-                "array".equals(qname)) {
+                "array".equals(qname)) { // 结构体或数组类型
+                // 添加至列表
                 valList.add(new Value(qname));
             }
         }
-        
+        // 结束解析元素
         public void endElement(String ns,
                 String sname,
                 String qname) throws SAXException {
             charsValid = false;
-            if ("struct".equals(qname) ||
+            if ("struct".equals(qname) || // 结构体或数组类型
                     "array".equals(qname)) {
+                // 添加至列表
                 valList.add(new Value("/"+qname));
             }
         }
         
         public void characters(char buf[], int offset, int len)
         throws SAXException {
-            if (charsValid) {
+            if (charsValid) { // 是否合法
+                // 从列表获取value
                 Value v = valList.get(valList.size()-1);
+                // 将buf添加至value
                 v.addChars(buf, offset,len);
             }
         }
         
     }
-    
+    // 内部类，对应XmlInputArchive
     private class XmlIndex implements Index {
+        // 是否已经完成
         public boolean done() {
+            // 根据索引获取value
             Value v = valList.get(vIdx);
-            if ("/array".equals(v.getType())) {
+            if ("/array".equals(v.getType())) { // 类型为/array
+                // 设置开索引值为null
                 valList.set(vIdx, null);
+                // 增加索引值
                 vIdx++;
                 return true;
             } else {
                 return false;
             }
         }
+        // 增加索引值，空的实现
         public void incr() {}
     }
-    
+    // 值列表
     private ArrayList<Value> valList;
+    // 值长度
     private int vLen;
+    // 索引
     private int vIdx;
-    
+    // 下一项
     private Value next() throws IOException {
-        if (vIdx < vLen) {
+        if (vIdx < vLen) {  // 下一项
+            // 获取值
             Value v = valList.get(vIdx);
+            // 设置索引值为null
             valList.set(vIdx, null);
+            // 增加索引值
             vIdx++;
             return v;
         } else {
             throw new IOException("Error in deserialization.");
         }
     }
-    
+    // 获取XmlInputArchive
     static XmlInputArchive getArchive(InputStream strm)
     throws ParserConfigurationException, SAXException, IOException {
         return new XmlInputArchive(strm);
     }
     
-    /** Creates a new instance of BinaryInputArchive */
+    /** Creates a new instance of BinaryInputArchive  // 构造函数 */
     public XmlInputArchive(InputStream in)
     throws ParserConfigurationException, SAXException, IOException {
         valList = new ArrayList<Value>();
@@ -150,7 +168,7 @@ class XmlInputArchive implements InputArchive {
         vLen = valList.size();
         vIdx = 0;
     }
-    
+    // 读取byte类型
     public byte readByte(String tag) throws IOException {
         Value v = next();
         if (!"ex:i1".equals(v.getType())) {
@@ -158,7 +176,7 @@ class XmlInputArchive implements InputArchive {
         }
         return Byte.parseByte(v.getValue());
     }
-    
+    // 读取Boolean类型
     public boolean readBool(String tag) throws IOException {
         Value v = next();
         if (!"boolean".equals(v.getType())) {
@@ -166,7 +184,7 @@ class XmlInputArchive implements InputArchive {
         }
         return "1".equals(v.getValue());
     }
-    
+    // 读取int类型
     public int readInt(String tag) throws IOException {
         Value v = next();
         if (!"i4".equals(v.getType()) &&
@@ -175,7 +193,7 @@ class XmlInputArchive implements InputArchive {
         }
         return Integer.parseInt(v.getValue());
     }
-    
+    // 读取long类型
     public long readLong(String tag) throws IOException {
         Value v = next();
         if (!"ex:i8".equals(v.getType())) {
@@ -183,7 +201,7 @@ class XmlInputArchive implements InputArchive {
         }
         return Long.parseLong(v.getValue());
     }
-    
+    // 读取float类型
     public float readFloat(String tag) throws IOException {
         Value v = next();
         if (!"ex:float".equals(v.getType())) {
@@ -191,7 +209,7 @@ class XmlInputArchive implements InputArchive {
         }
         return Float.parseFloat(v.getValue());
     }
-    
+    // 读取double类型
     public double readDouble(String tag) throws IOException {
         Value v = next();
         if (!"double".equals(v.getType())) {
@@ -199,7 +217,7 @@ class XmlInputArchive implements InputArchive {
         }
         return Double.parseDouble(v.getValue());
     }
-    
+    // 读取String类型
     public String readString(String tag) throws IOException {
         Value v = next();
         if (!"string".equals(v.getType())) {
@@ -207,7 +225,7 @@ class XmlInputArchive implements InputArchive {
         }
         return Utils.fromXMLString(v.getValue());
     }
-    
+    // 读取Buffer类型
     public byte[] readBuffer(String tag) throws IOException {
         Value v = next();
         if (!"string".equals(v.getType())) {
@@ -215,25 +233,25 @@ class XmlInputArchive implements InputArchive {
         }
         return Utils.fromXMLBuffer(v.getValue());
     }
-    
+    // 读取Record类型
     public void readRecord(Record r, String tag) throws IOException {
         r.deserialize(this, tag);
     }
-    
+    // 开始读取Record
     public void startRecord(String tag) throws IOException {
         Value v = next();
         if (!"struct".equals(v.getType())) {
             throw new IOException("Error deserializing "+tag+".");
         }
     }
-    
+    // 结束读取Record
     public void endRecord(String tag) throws IOException {
         Value v = next();
         if (!"/struct".equals(v.getType())) {
             throw new IOException("Error deserializing "+tag+".");
         }
     }
-    
+    // 开始读取vector
     public Index startVector(String tag) throws IOException {
         Value v = next();
         if (!"array".equals(v.getType())) {
@@ -241,13 +259,13 @@ class XmlInputArchive implements InputArchive {
         }
         return new XmlIndex();
     }
-    
+    // 结束读取vector
     public void endVector(String tag) throws IOException {}
-    
+    // 开始读取Map
     public Index startMap(String tag) throws IOException {
         return startVector(tag);
     }
-    
+    // 停止读取Map
     public void endMap(String tag) throws IOException { endVector(tag); }
 
 }

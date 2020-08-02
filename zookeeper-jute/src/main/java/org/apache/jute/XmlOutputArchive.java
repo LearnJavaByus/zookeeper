@@ -29,13 +29,13 @@ import java.util.TreeMap;
  *
  */
 class XmlOutputArchive implements OutputArchive {
-
+    // PrintStream为其他输出流添加了功能，使它们能够方便地打印各种数据值表示形式
     private PrintStream stream;
-    
+    // 缩进个数
     private int indent = 0;
-    
+    // 栈结构
     private Stack<String> compoundStack;
-    
+    // 存放缩进
     private void putIndent() {
         StringBuilder sb = new StringBuilder("");
         for (int idx = 0; idx < indent; idx++) {
@@ -43,15 +43,15 @@ class XmlOutputArchive implements OutputArchive {
         }
         stream.print(sb.toString());
     }
-    
+    // 添加缩进
     private void addIndent() {
         indent++;
     }
-    
+    // 减少缩进
     private void closeIndent() {
         indent--;
     }
-    
+    // 打印文件头格式
     private void printBeginEnvelope(String tag) {
         if (!compoundStack.empty()) {
             String s = compoundStack.peek();
@@ -72,7 +72,7 @@ class XmlOutputArchive implements OutputArchive {
             stream.print("<value>");
         }
     }
-    
+    // 打印文件尾格式
     private void printEndEnvelope(String tag) {
         if (!compoundStack.empty()) {
             String s = compoundStack.peek();
@@ -129,17 +129,17 @@ class XmlOutputArchive implements OutputArchive {
         }
         printEndEnvelope(tag);
     }
-    
+    // 获取Archive
     static XmlOutputArchive getArchive(OutputStream strm) {
         return new XmlOutputArchive(strm);
     }
     
-    /** Creates a new instance of XmlOutputArchive */
+    /** Creates a new instance of XmlOutputArchive // 构造函数*/
     public XmlOutputArchive(OutputStream out) {
         stream = new PrintStream(out);
         compoundStack = new Stack<String>();
     }
-    
+    // 写Byte类型
     public void writeByte(byte b, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<ex:i1>");
@@ -147,7 +147,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</ex:i1>");
         printEndEnvelope(tag);
     }
-    
+    // 写boolean类型
     public void writeBool(boolean b, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<boolean>");
@@ -155,7 +155,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</boolean>");
         printEndEnvelope(tag);
     }
-    
+    // 写int类型
     public void writeInt(int i, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<i4>");
@@ -163,7 +163,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</i4>");
         printEndEnvelope(tag);
     }
-    
+    // 写long类型
     public void writeLong(long l, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<ex:i8>");
@@ -171,7 +171,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</ex:i8>");
         printEndEnvelope(tag);
     }
-    
+    // 写float类型
     public void writeFloat(float f, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<ex:float>");
@@ -179,7 +179,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</ex:float>");
         printEndEnvelope(tag);
     }
-    
+    // 写double类型
     public void writeDouble(double d, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<double>");
@@ -187,7 +187,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</double>");
         printEndEnvelope(tag);
     }
-    
+    // 写String类型
     public void writeString(String s, String tag) throws IOException {
         printBeginEnvelope(tag);
         stream.print("<string>");
@@ -195,7 +195,7 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</string>");
         printEndEnvelope(tag);
     }
-    
+    // 写Buffer类型
     public void writeBuffer(byte buf[], String tag)
     throws IOException {
         printBeginEnvelope(tag);
@@ -204,43 +204,43 @@ class XmlOutputArchive implements OutputArchive {
         stream.print("</string>");
         printEndEnvelope(tag);
     }
-    
+    // 写Record类型
     public void writeRecord(Record r, String tag) throws IOException {
         r.serialize(this, tag);
     }
-    
+    // 开始写Record类型
     public void startRecord(Record r, String tag) throws IOException {
         insideRecord(tag);
         stream.print("<struct>\n");
         addIndent();
     }
-    
+    // 结束写Record类型
     public void endRecord(Record r, String tag) throws IOException {
         closeIndent();
         putIndent();
         stream.print("</struct>");
         outsideRecord(tag);
     }
-    
+    // 开始写Vector类型
     public void startVector(List<?> v, String tag) throws IOException {
         insideVector(tag);
         stream.print("<array>\n");
         addIndent();
     }
-    
+    // 结束写Vector类型
     public void endVector(List<?> v, String tag) throws IOException {
         closeIndent();
         putIndent();
         stream.print("</array>");
         outsideVector(tag);
     }
-    
+    // 开始写Map类型
     public void startMap(TreeMap<?,?> v, String tag) throws IOException {
         insideMap(tag);
         stream.print("<array>\n");
         addIndent();
     }
-    
+    // 结束写Map类型
     public void endMap(TreeMap<?,?> v, String tag) throws IOException {
         closeIndent();
         putIndent();
