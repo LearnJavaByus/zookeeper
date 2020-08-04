@@ -37,17 +37,23 @@ import org.slf4j.LoggerFactory;
  * This class manages watches. It allows watches to be associated with a string
  * and removes watchers and their watches in addition to managing triggers.
  *
- * 管理Watcher。
+ * 用于管理watchers和相应的触发器。watchTable表示从节点路径到watcher集合的映射，而watch2Paths则表示从watcher到所有节点路径集合的映射。
+ *
+ * 用作管理watcher、其对应的路径以及触发器，其方法都是针对两个映射的操作
  */
 class WatchManager {
     private static final Logger LOG = LoggerFactory.getLogger(WatchManager.class);
-
+    // watcher表
     private final HashMap<String, HashSet<Watcher>> watchTable =
         new HashMap<String, HashSet<Watcher>>();
-
+    // watcher到节点路径的映射
     private final HashMap<Watcher, HashSet<String>> watch2Paths =
         new HashMap<Watcher, HashSet<String>>();
 
+    /**
+     * 获取watchTable的大小，即遍历watchTable的值集合。
+     * @return
+     */
     synchronized int size(){
         int result = 0;
         for(Set<Watcher> watches : watchTable.values()) {
@@ -57,35 +63,46 @@ class WatchManager {
     }
 
     synchronized void addWatch(String path, Watcher watcher) {
+        // 根据路径获取对应的所有watcher
         HashSet<Watcher> list = watchTable.get(path);
-        if (list == null) {
+        if (list == null) {// 列表为空
             // don't waste memory if there are few watches on a node
             // rehash when the 4th entry is added, doubling size thereafter
             // seems like a good compromise
+            // 新生成watcher集合
             list = new HashSet<Watcher>(4);
+            // 存入watcher表
             watchTable.put(path, list);
         }
+        // 将watcher直接添加至watcher集合
         list.add(watcher);
-
+        // 通过watcher获取对应的所有路径
         HashSet<String> paths = watch2Paths.get(watcher);
-        if (paths == null) {
+        if (paths == null) { // 路径为空
             // cnxns typically have many watches, so use default cap here
-            paths = new HashSet<String>();
-            watch2Paths.put(watcher, paths);
+            paths = new HashSet<String>(); // 新生成hash集合
+            watch2Paths.put(watcher, paths); // 将watcher和对应的paths添加至映射中
         }
+        // 将路径添加至paths集合
         paths.add(path);
     }
 
+    /**
+     * 用作从watch2Paths和watchTable中中移除该watcher
+     * @param watcher
+     */
     synchronized void removeWatcher(Watcher watcher) {
+        // 从wach2Paths中移除watcher，并返回watcher对应的path集合
         HashSet<String> paths = watch2Paths.remove(watcher);
-        if (paths == null) {
+        if (paths == null) { // 集合为空，直接返回
             return;
         }
-        for (String p : paths) {
+        for (String p : paths) { // 遍历路径集合
+            // 从watcher表中根据路径取出相应的watcher集合
             HashSet<Watcher> list = watchTable.get(p);
-            if (list != null) {
-                list.remove(watcher);
-                if (list.size() == 0) {
+            if (list != null) { // 若集合不为空
+                list.remove(watcher);  // 从list中移除该watcher
+                if (list.size() == 0) { // 移除后list为空，则从watch表中移出
                     watchTable.remove(p);
                 }
             }
@@ -95,14 +112,17 @@ class WatchManager {
     Set<Watcher> triggerWatch(String path, EventType type) {
         return triggerWatch(path, type, null);
     }
-
+    //用于触发watch事件，并对事件进行处理
     Set<Watcher> triggerWatch(String path, EventType type, Set<Watcher> supress) {
+        // 根据事件类型、连接状态、节点路径创建WatchedEvent
         WatchedEvent e = new WatchedEvent(type,
                 KeeperState.SyncConnected, path);
+        // watcher集合
         HashSet<Watcher> watchers;
-        synchronized (this) {
+        synchronized (this) { // 同步块
+            // 从watcher表中移除path，并返回其对应的watcher集合
             watchers = watchTable.remove(path);
-            if (watchers == null || watchers.isEmpty()) {
+            if (watchers == null || watchers.isEmpty()) { // watcher集合为空
                 if (LOG.isTraceEnabled()) {
                     ZooTrace.logTraceMessage(LOG,
                             ZooTrace.EVENT_DELIVERY_TRACE_MASK,
@@ -110,18 +130,19 @@ class WatchManager {
                 }
                 return null;
             }
-            for (Watcher w : watchers) {
+            for (Watcher w : watchers) { // 遍历watcher集合
+                // 根据watcher从watcher表中取出路径集合
                 HashSet<String> paths = watch2Paths.get(w);
-                if (paths != null) {
-                    paths.remove(path);
+                if (paths != null) { // 路径集合不为空
+                    paths.remove(path); // 则移除路径
                 }
             }
         }
-        for (Watcher w : watchers) {
-            if (supress != null && supress.contains(w)) {
+        for (Watcher w : watchers) { // 遍历watcher集合
+            if (supress != null && supress.contains(w)) { // supress不为空并且包含watcher，则跳过
                 continue;
             }
-            w.process(e);
+            w.process(e); // 进行处理
         }
         return watchers;
     }
@@ -150,22 +171,25 @@ class WatchManager {
      * @param byPath iff true output watches by paths, otw output
      * watches by connection
      * @return string representation of watches
+     *
+     * 用作将watchTable或watch2Paths写入磁盘。
      */
     synchronized void dumpWatches(PrintWriter pwriter, boolean byPath) {
-        if (byPath) {
-            for (Entry<String, HashSet<Watcher>> e : watchTable.entrySet()) {
+        if (byPath) { // 控制写入watchTable或watch2Paths
+            for (Entry<String, HashSet<Watcher>> e : watchTable.entrySet()) { // 遍历每个键值对
+                // 写入键
                 pwriter.println(e.getKey());
-                for (Watcher w : e.getValue()) {
+                for (Watcher w : e.getValue()) {  // 遍历值(HashSet<Watcher>)
                     pwriter.print("\t0x");
                     pwriter.print(Long.toHexString(((ServerCnxn)w).getSessionId()));
                     pwriter.print("\n");
                 }
             }
         } else {
-            for (Entry<Watcher, HashSet<String>> e : watch2Paths.entrySet()) {
-                pwriter.print("0x");
+            for (Entry<Watcher, HashSet<String>> e : watch2Paths.entrySet()) { // 遍历每个键值对
+                pwriter.print("0x");  // 写入"0x"
                 pwriter.println(Long.toHexString(((ServerCnxn)e.getKey()).getSessionId()));
-                for (String path : e.getValue()) {
+                for (String path : e.getValue()) {  // 遍历值(HashSet<String>)
                     pwriter.print("\t");
                     pwriter.println(path);
                 }

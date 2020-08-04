@@ -1516,17 +1516,19 @@ public class ClientCnxn {
             Record response, WatchRegistration watchRegistration,
             WatchDeregistration watchDeregistration)
             throws InterruptedException {
+        // 新生响应头
         ReplyHeader r = new ReplyHeader();
+        // 新生Packet包
         Packet packet = queuePacket(h, r, request, response, null, null, null,
                 null, watchRegistration, watchDeregistration);
-        synchronized (packet) {
+        synchronized (packet) { // 同步
             if (requestTimeout > 0) {
                 // Wait for request completion with timeout
                 waitForPacketFinish(r, packet);
             } else {
-                // Wait for request completion infinitely
+                // Wait for request completion infinitely // 如果没有结束
                 while (!packet.finished) {
-                    packet.wait();
+                    packet.wait(); // 则等待
                 }
             }
         }
