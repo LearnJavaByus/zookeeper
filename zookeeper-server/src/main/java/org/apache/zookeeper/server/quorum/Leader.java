@@ -912,7 +912,10 @@ public class Leader {
            }
         }
     }
-    
+
+    /**
+     * 维护toBeApplied列表，下个处理器必须是FinalRequestProcessor并且FinalRequestProcessor必须同步处理请求。
+     */
     static class ToBeAppliedRequestProcessor implements RequestProcessor {
         private final RequestProcessor next;
 

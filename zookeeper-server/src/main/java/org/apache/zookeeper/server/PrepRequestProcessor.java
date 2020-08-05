@@ -87,11 +87,13 @@ import java.util.concurrent.LinkedBlockingQueue;
  * state of the system. It counts on ZooKeeperServer to update
  * outstandingRequests, so that it can take into account transactions that are
  * in the queue to be applied when generating a transaction.
+ *
+ * 通常是请求处理链的第一个处理器。
  */
 public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
         RequestProcessor {
     private static final Logger LOG = LoggerFactory.getLogger(PrepRequestProcessor.class);
-
+    // 是否跳过ACL,需查看系统配置
     static boolean skipACL;
     static {
         skipACL = System.getProperty("zookeeper.skipACL", "no").equals("yes");
@@ -102,20 +104,22 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
 
     /**
      * this is only for testing purposes.
-     * should never be used otherwise
+     * should never be used otherwise // 仅用作测试使用
      */
     private static  boolean failCreate = false;
-
+    // 已提交请求队列
     LinkedBlockingQueue<Request> submittedRequests = new LinkedBlockingQueue<Request>();
-
+    // 下个处理器
     private final RequestProcessor nextProcessor;
-
+    // Zookeeper服务器
     ZooKeeperServer zks;
 
     public PrepRequestProcessor(ZooKeeperServer zks,
             RequestProcessor nextProcessor) {
+        // 调用父类Thread构造函数
         super("ProcessThread(sid:" + zks.getServerId() + " cport:"
                 + zks.getClientPort() + "):", zks.getZooKeeperServerListener());
+        // 类属性赋值
         this.nextProcessor = nextProcessor;
         this.zks = zks;
     }
@@ -130,26 +134,28 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     @Override
     public void run() {
         try {
-            while (true) {
+            while (true) { // 无限循环
+                // 从队列中取出一个请求
                 Request request = submittedRequests.take();
                 long traceMask = ZooTrace.CLIENT_REQUEST_TRACE_MASK;
-                if (request.type == OpCode.ping) {
+                if (request.type == OpCode.ping) { // 请求类型为PING
                     traceMask = ZooTrace.CLIENT_PING_TRACE_MASK;
                 }
-                if (LOG.isTraceEnabled()) {
+                if (LOG.isTraceEnabled()) {  // 是否可追踪
                     ZooTrace.logRequest(LOG, traceMask, 'P', request, "");
                 }
-                if (Request.requestOfDeath == request) {
+                if (Request.requestOfDeath == request) { // 在关闭处理器之后，会添加requestOfDeath，表示关闭后不再处理请求
                     break;
                 }
+                // 调用pRequest函数
                 pRequest(request);
             }
-        } catch (RequestProcessorException e) {
+        } catch (RequestProcessorException e) { // 请求处理异常
             if (e.getCause() instanceof XidRolloverException) {
                 LOG.info(e.getCause().getMessage());
             }
             handleException(this.getName(), e);
-        } catch (Exception e) {
+        } catch (Exception e) {// 其他异常
             handleException(this.getName(), e);
         }
         LOG.info("PrepRequestProcessor exited loop!");
@@ -732,15 +738,18 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
     protected void pRequest(Request request) throws RequestProcessorException {
         // LOG.info("Prep>>> cxid = " + request.cxid + " type = " +
         // request.type + " id = 0x" + Long.toHexString(request.sessionId));
+        // 将请求的hdr和txn设置为null
         request.setHdr(null);
         request.setTxn(null);
 
         try {
-            switch (request.type) {
+            switch (request.type) {// 确定请求类型
             case OpCode.createContainer:
-            case OpCode.create:
+            case OpCode.create:// 创建节点请求
             case OpCode.create2:
+                // 新生创建节点请求
                 CreateRequest create2Request = new CreateRequest();
+                // 处理请求
                 pRequest2Txn(request.type, zks.getNextZxid(), request, create2Request, true);
                 break;
             case OpCode.createTTL:
@@ -748,12 +757,16 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 pRequest2Txn(request.type, zks.getNextZxid(), request, createTtlRequest, true);
                 break;
             case OpCode.deleteContainer:
-            case OpCode.delete:
+            case OpCode.delete:// 删除节点请求.
+                // 新生删除节点请求
                 DeleteRequest deleteRequest = new DeleteRequest();
+                // 处理请求
                 pRequest2Txn(request.type, zks.getNextZxid(), request, deleteRequest, true);
                 break;
-            case OpCode.setData:
-                SetDataRequest setDataRequest = new SetDataRequest();                
+            case OpCode.setData:// 设置数据请求
+                // 新生设置数据请求
+                SetDataRequest setDataRequest = new SetDataRequest();
+                 // 处理请求
                 pRequest2Txn(request.type, zks.getNextZxid(), request, setDataRequest, true);
                 break;
             case OpCode.reconfig:
@@ -761,19 +774,26 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 ByteBufferInputStream.byteBuffer2Record(request.request, reconfigRequest);
                 pRequest2Txn(request.type, zks.getNextZxid(), request, reconfigRequest, true);
                 break;
-            case OpCode.setACL:
-                SetACLRequest setAclRequest = new SetACLRequest();                
+            case OpCode.setACL:// 设置ACL请求
+                // 新生设置ACL请求
+                SetACLRequest setAclRequest = new SetACLRequest();
+                // 处理请求
                 pRequest2Txn(request.type, zks.getNextZxid(), request, setAclRequest, true);
                 break;
-            case OpCode.check:
-                CheckVersionRequest checkRequest = new CheckVersionRequest();              
+            case OpCode.check:// 检查版本请求
+                // 新生检查版本请求
+                CheckVersionRequest checkRequest = new CheckVersionRequest();
+               // 处理请求
                 pRequest2Txn(request.type, zks.getNextZxid(), request, checkRequest, true);
                 break;
-            case OpCode.multi:
+            case OpCode.multi:// 多重请求.
+                // 新生多重请求
                 MultiTransactionRecord multiRequest = new MultiTransactionRecord();
                 try {
+                    // 将ByteBuffer转化为Record
                     ByteBufferInputStream.byteBuffer2Record(request.request, multiRequest);
                 } catch(IOException e) {
+                    // 出现异常则重新生成Txn头...
                     request.setHdr(new TxnHeader(request.sessionId, request.cxid, zks.getNextZxid(),
                             Time.currentWallTime(), OpCode.multi));
                     throw e;
@@ -783,10 +803,11 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 long zxid = zks.getNextZxid();
                 KeeperException ke = null;
 
-                //Store off current pending change records in case we need to rollback
+                //Store off current pending change records in case we need to rollback..
+                // 存储当前挂起的更改记录，以防我们需要回滚
                 Map<String, ChangeRecord> pendingChanges = getPendingChanges(multiRequest);
 
-                for(Op op: multiRequest) {
+                for(Op op: multiRequest) {// 遍历请求
                     Record subrequest = op.toRequestRecord();
                     int type;
                     Record txn;
@@ -795,20 +816,23 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                      * trying the rest as we know it's going to fail and it
                      * would be confusing in the logfiles.
                      */
-                    if (ke != null) {
+                    if (ke != null) { // 发生了异常
                         type = OpCode.error;
                         txn = new ErrorTxn(Code.RUNTIMEINCONSISTENCY.intValue());
                     }
 
-                    /* Prep the request and convert to a Txn */
+                    /* Prep the request and convert to a Txn // 未发生异常*/
                     else {
                         try {
+                            // 将Request转化为Txn
                             pRequest2Txn(op.getType(), zxid, request, subrequest, false);
                             type = request.getHdr().getType();
                             txn = request.getTxn();
-                        } catch (KeeperException e) {
+                        } catch (KeeperException e) {// 转化发生异常
                             ke = e;
+                            // 设置请求头的类型
                             type = OpCode.error;
+                            // 设置请求的Txn
                             txn = new ErrorTxn(e.code().intValue());
 
                             if (e.code().intValue() > Code.APIERROR.intValue()) {
@@ -816,17 +840,19 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                                         " remaining multi ops. Error Path:{} Error:{}",
                                         request.toString(), e.getPath(), e.getMessage());
                             }
-
+                    // 设置异常
                             request.setException(e);
 
                             /* Rollback change records from failed multi-op */
+                            // 从多重操作中回滚更改记录
                             rollbackPendingChanges(zxid, pendingChanges);
                         }
                     }
 
                     //FIXME: I don't want to have to serialize it here and then
                     //       immediately deserialize in next processor. But I'm
-                    //       not sure how else to get the txn stored into our list.
+                    //       not sure how else to get the txn stored into our list
+                    // 序列化
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     BinaryOutputArchive boa = BinaryOutputArchive.getArchive(baos);
                     txn.serialize(boa, "request") ;
@@ -835,22 +861,24 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                     txns.add(new Txn(type, bb.array()));
                 }
 
+                // 给请求头赋值
                 request.setHdr(new TxnHeader(request.sessionId, request.cxid, zxid,
                         Time.currentWallTime(), request.type));
+                // 设置请求的Txn
                 request.setTxn(new MultiTxn(txns));
 
                 break;
 
             //create/close session don't require request record
-            case OpCode.createSession:
-            case OpCode.closeSession:
+            case OpCode.createSession:// 创建会话请求
+            case OpCode.closeSession:// 关闭会话请求
                 if (!request.isLocalSession()) {
                     pRequest2Txn(request.type, zks.getNextZxid(), request,
                                  null, true);
                 }
                 break;
 
-            //All the rest don't need to create a Txn - just verify session
+            //All the rest don't need to create a Txn - just verify session// 所有以下请求只需验证会话即可
             case OpCode.sync:
             case OpCode.exists:
             case OpCode.getData:
@@ -868,7 +896,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 LOG.warn("unknown type " + request.type);
                 break;
             }
-        } catch (KeeperException e) {
+        } catch (KeeperException e) {// 发生KeeperException异常
             if (request.getHdr() != null) {
                 request.getHdr().setType(OpCode.error);
                 request.setTxn(new ErrorTxn(e.code().intValue()));
@@ -879,7 +907,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                         request.toString(), e.getPath(), e.getMessage());
             }
             request.setException(e);
-        } catch (Exception e) {
+        } catch (Exception e) {// 其他异常
             // log at error level as we are returning a marshalling
             // error to the user
             LOG.error("Failed to process " + request, e);
@@ -901,7 +929,9 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 request.setTxn(new ErrorTxn(Code.MARSHALLINGERROR.intValue()));
             }
         }
+        // 给请求的zxid赋值
         request.zxid = zks.getZxid();
+        // 传递给下个处理器进行处理
         nextProcessor.processRequest(request);
     }
 

@@ -34,6 +34,8 @@ import org.slf4j.LoggerFactory;
 /**
  * This RequestProcessor forwards any requests that modify the state of the
  * system to the Leader.
+ *
+ * 将修改了系统状态的请求转发给Leader。。。。。。
  */
 public class FollowerRequestProcessor extends ZooKeeperCriticalThread implements
         RequestProcessor {
