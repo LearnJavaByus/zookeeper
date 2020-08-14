@@ -54,39 +54,43 @@ import org.slf4j.LoggerFactory;
 /**
  * This class handles communication with clients using NIO. There is one per
  * client, but only one thread doing the communication.
+ *
+ * 使用NIO来处理与客户端之间的通信，使用单线程处理。
  */
 public class NIOServerCnxn extends ServerCnxn {
     private static final Logger LOG = LoggerFactory.getLogger(NIOServerCnxn.class);
-
+    // ServerCnxn工厂
     private final NIOServerCnxnFactory factory;
-
+    // 针对面向流的连接套接字的可选择通道
     private final SocketChannel sock;
 
     private final SelectorThread selectorThread;
-
+    // 表示 SelectableChannel 在 Selector 中注册的标记
     private final SelectionKey sk;
-
+    // 初始化标志
     private boolean initialized;
-
+    // 分配四个字节缓冲区
     private final ByteBuffer lenBuffer = ByteBuffer.allocate(4);
-
+    // 赋值incomingBuffer
     private ByteBuffer incomingBuffer = lenBuffer;
-
+    // 缓冲队列
     private final Queue<ByteBuffer> outgoingBuffers =
         new LinkedBlockingQueue<ByteBuffer>();
-
+    // 会话超时时间
     private int sessionTimeout;
-
+    // ZooKeeper服务器
     private final ZooKeeperServer zkServer;
 
     /**
      * The number of requests that have been submitted but not yet responded to.
+     * // 已经被提交但还未响应的请求数量
      */
     private final AtomicInteger outstandingRequests = new AtomicInteger(0);
 
     /**
      * This is the id that uniquely identifies the session of a client. Once
      * this session is no longer active, the ephemeral nodes will go away.
+     * // 会话ID
      */
     private long sessionId;
 
@@ -110,9 +114,12 @@ public class NIOServerCnxn extends ServerCnxn {
         }
         sock.socket().setTcpNoDelay(true);
         /* set socket linger to false, so that socket close does not block */
+        // 设置linger为false，以便在socket关闭时不会阻塞
         sock.socket().setSoLinger(false, -1);
+        // 获取IP地址
         InetAddress addr = ((InetSocketAddress) sock.socket()
                 .getRemoteSocketAddress()).getAddress();
+        // 认证信息中添加IP地址
         authInfo.add(new Id("ip", addr.getHostAddress()));
         this.sessionTimeout = factory.sessionlessCnxnTimeout;
     }
@@ -439,6 +446,8 @@ public class NIOServerCnxn extends ServerCnxn {
      * responsible for chunking up the response to a client. Rather
      * than cons'ing up a response fully in memory, which may be large
      * for some commands, this class chunks up the result.
+     *
+     * 用来将给客户端的响应进行分块
      */
     private class SendBufferWriter extends Writer {
         private StringBuffer sb = new StringBuffer();
@@ -446,8 +455,11 @@ public class NIOServerCnxn extends ServerCnxn {
         /**
          * Check if we are ready to send another chunk.
          * @param force force sending, even if not a full chunk
+         *
+         *              // 是否准备好发送另一块
          */
         private void checkFlush(boolean force) {
+            // 当强制发送并且sb大小大于0，或者sb大小大于2048即发送缓存
             if ((force && sb.length() > 0) || sb.length() > 2048) {
                 sendBufferSync(ByteBuffer.wrap(sb.toString().getBytes()));
                 // clear our internal buffer
@@ -458,7 +470,7 @@ public class NIOServerCnxn extends ServerCnxn {
         @Override
         public void close() throws IOException {
             if (sb == null) return;
-            checkFlush(true);
+            checkFlush(true); // 关闭之前需要强制性发送缓存
             sb = null; // clear out the ref to ensure no reuse
         }
 

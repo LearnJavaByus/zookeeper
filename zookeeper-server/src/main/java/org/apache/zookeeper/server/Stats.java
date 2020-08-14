@@ -21,7 +21,7 @@ package org.apache.zookeeper.server;
 import java.util.Date;
 
 /**
- * Statistics on the ServerCnxn
+ * Statistics on the ServerCnxn 表示ServerCnxn上的统计数据。
  */
 interface Stats {
     /** Date/time the connection was established

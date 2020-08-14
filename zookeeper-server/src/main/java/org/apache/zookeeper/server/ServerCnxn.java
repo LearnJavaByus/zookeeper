@@ -48,13 +48,15 @@ import org.slf4j.LoggerFactory;
  * to the server.
  *
  * 继承Watcher，表示客户端与服务端的一个连接。
+ *
+ * 主要是服务器的统计信息和和命令行信息。
  */
 public abstract class ServerCnxn implements Stats, Watcher {
     // This is just an arbitrary object to represent requests issued by
-    // (aka owned by) this class
+    // (aka owned by) this class // 代表由本类提出的请求
     final public static Object me = new Object();
     private static final Logger LOG = LoggerFactory.getLogger(ServerCnxn.class);
-    
+    // 认证信息
     protected ArrayList<Id> authInfo = new ArrayList<Id>();
 
     private static final byte[] fourBytes = new byte[4];
@@ -63,13 +65,13 @@ public abstract class ServerCnxn implements Stats, Watcher {
      * If the client is of old version, we don't send r-o mode info to it.
      * The reason is that if we would, old C client doesn't read it, which
      * results in TCP RST packet, i.e. "connection reset by peer".
-     */
+     */// 是否为旧的C客户端
     boolean isOldClient = true;
-
+    // 获取会话超时时间
     abstract int getSessionTimeout();
-
+    // 关闭
     abstract void close();
-
+    // 发送响应
     public void sendResponse(ReplyHeader h, Record r, String tag) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         // Make space for length
@@ -92,39 +94,41 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     /* notify the client the session is closing and close/cleanup socket */
+    // 关闭会话
     abstract void sendCloseSession();
-
+    // 处理，Watcher接口中的方法
     public abstract void process(WatchedEvent event);
-
+    // 获取会话id
     public abstract long getSessionId();
-
+    // 设置会话id
     abstract void setSessionId(long sessionId);
 
-    /** auth info for the cnxn, returns an unmodifyable list */
+    /** auth info for the cnxn, returns an unmodifyable list  // 获取认证信息，返回不可修改的列表*/
     public List<Id> getAuthInfo() {
         return Collections.unmodifiableList(authInfo);
     }
-
+    // 添加认证信息
     public void addAuthInfo(Id id) {
         if (authInfo.contains(id) == false) {
             authInfo.add(id);
         }
     }
-
+    // 移除认证信息
     public boolean removeAuthInfo(Id id) {
         return authInfo.remove(id);
     }
-
+    // 设置缓冲
     abstract void sendBuffer(ByteBuffer closeConn);
-
+    // 允许接收
     abstract void enableRecv();
-
+    // 不允许接收
     abstract void disableRecv();
-
+    // 设置会话超时时间
     abstract void setSessionTimeout(int sessionTimeout);
-
+    // Zookeeper的Sasl服务器
     protected ZooKeeperSaslServer zooKeeperSaslServer = null;
 
+    // 请求关闭异常类
     protected static class CloseRequestException extends IOException {
         private static final long serialVersionUID = -7854505709816442681L;
 
@@ -133,6 +137,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
         }
     }
 
+    // 请求关闭异常类
     protected static class EndOfStreamException extends IOException {
         private static final long serialVersionUID = -8255690282104294178L;
 
@@ -144,7 +149,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
             return "EndOfStreamException: " + getMessage();
         }
     }
-
+    // 接收的packe
     protected void packetReceived() {
         incrPacketsReceived();
         ServerStats serverStats = serverStats();
@@ -152,7 +157,7 @@ public abstract class ServerCnxn implements Stats, Watcher {
             serverStats().incrementPacketsReceived();
         }
     }
-
+    // 发送的packet
     protected void packetSent() {
         incrPacketsSent();
         ServerStats serverStats = serverStats();
@@ -162,23 +167,34 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     protected abstract ServerStats serverStats();
-
+    /**
+     * 服务器的统计数据
+     **/
+    // 创建连接的时间
     protected final Date established = new Date();
-
+    // 接受的packet数量
     protected final AtomicLong packetsReceived = new AtomicLong();
+    // 发送的packet数量
     protected final AtomicLong packetsSent = new AtomicLong();
-
+    // 最小延迟
     protected long minLatency;
+    // 最大延迟
     protected long maxLatency;
+    // 最后操作类型
     protected String lastOp;
+    // 最后的cxid
     protected long lastCxid;
+    // 最后的zxid
     protected long lastZxid;
+    // 最后的响应时间
     protected long lastResponseTime;
+    // 最后的延迟
     protected long lastLatency;
-
+    // 数量
     protected long count;
+    // 总的延迟
     protected long totalLatency;
-
+    // 重置统计数据
     public synchronized void resetStats() {
         packetsReceived.set(0);
         packetsSent.set(0);
@@ -193,18 +209,18 @@ public abstract class ServerCnxn implements Stats, Watcher {
         count = 0;
         totalLatency = 0;
     }
-
+    // 增加接收的packet数量
     protected long incrPacketsReceived() {
         return packetsReceived.incrementAndGet();
     }
-    
+    // 增加outstandingRequest数量
     protected void incrOutstandingRequests(RequestHeader h) {
     }
-
+    // 增加发送的packet数量
     protected long incrPacketsSent() {
         return packetsSent.incrementAndGet();
     }
-
+    // 更新响应的统计数据
     protected synchronized void updateStatsForResponse(long cxid, long zxid,
             String op, long start, long end)
     {

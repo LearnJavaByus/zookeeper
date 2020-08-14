@@ -27,7 +27,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  * events by registering a callback object with the client. The callback object
  * is expected to be an instance of a class that implements Watcher interface.
  *
- * 其定义了process方法，需子类实现
+ * 其定义了process方法，需子类实现 表示时间处理器。
  */
 @InterfaceAudience.Public
 public interface Watcher {
