@@ -53,24 +53,33 @@ import org.slf4j.LoggerFactory;
 
 public class NettyServerCnxn extends ServerCnxn {
     private static final Logger LOG = LoggerFactory.getLogger(NettyServerCnxn.class);
+    // 通道
     private final Channel channel;
+
     private CompositeByteBuf queuedBuffer;
+    // 节流与否
     private final AtomicBoolean throttled = new AtomicBoolean(false);
+    // Byte缓冲区
     private ByteBuffer bb;
+    // 四个字节的缓冲区
     private final ByteBuffer bbLen = ByteBuffer.allocate(4);
+    // 会话ID
     private long sessionId;
+    // 会话超时时间
     private int sessionTimeout;
+    // 计数
     private AtomicLong outstandingCount = new AtomicLong();
     private Certificate[] clientChain;
     private volatile boolean closingChannel;
 
     /** The ZooKeeperServer for this connection. May be null if the server
       * is not currently serving requests (for example if the server is not
-      * an active quorum participant.
+      * an active quorum participant. // Zookeeper服务器
       */
     private volatile ZooKeeperServer zkServer;
-
+    // NettyServerCnxn工厂
     private final NettyServerCnxnFactory factory;
+    // 初始化与否
     private boolean initialized;
 
     NettyServerCnxn(Channel channel, ZooKeeperServer zks, NettyServerCnxnFactory factory) {
@@ -78,7 +87,7 @@ public class NettyServerCnxn extends ServerCnxn {
         this.closingChannel = false;
         this.zkServer = zks;
         this.factory = factory;
-        if (this.factory.login != null) {
+        if (this.factory.login != null) { // 需要登录信息(用户名和密码登录)
             this.zooKeeperSaslServer = new ZooKeeperSaslServer(factory.login);
         }
     }
@@ -144,6 +153,7 @@ public class NettyServerCnxn extends ServerCnxn {
 
     @Override
     public void process(WatchedEvent event) {
+        // 创建响应头
         ReplyHeader h = new ReplyHeader(-1, -1L, 0);
         if (LOG.isTraceEnabled()) {
             ZooTrace.logTraceMessage(LOG, ZooTrace.EVENT_DELIVERY_TRACE_MASK,
@@ -156,6 +166,7 @@ public class NettyServerCnxn extends ServerCnxn {
         WatcherEvent e = event.getWrapper();
 
         try {
+            // 发送响应
             sendResponse(h, e, "notification");
         } catch (IOException e1) {
             if (LOG.isDebugEnabled()) {
@@ -213,8 +224,10 @@ public class NettyServerCnxn extends ServerCnxn {
         /**
          * Check if we are ready to send another chunk.
          * @param force force sending, even if not a full chunk
+         *              // 是否准备好发送另一块
          */
         private void checkFlush(boolean force) {
+            // 当强制发送并且sb大小大于0，或者sb大小大于2048即发送缓存
             if ((force && sb.length() > 0) || sb.length() > 2048) {
                 sendBuffer(ByteBuffer.wrap(sb.toString().getBytes()));
                 // clear our internal buffer
@@ -225,7 +238,7 @@ public class NettyServerCnxn extends ServerCnxn {
         @Override
         public void close() throws IOException {
             if (sb == null) return;
-            checkFlush(true);
+            checkFlush(true);// 关闭之前需要强制性发送缓存
             sb = null; // clear out the ref to ensure no reuse
         }
 
@@ -433,8 +446,8 @@ public class NettyServerCnxn extends ServerCnxn {
     private void receiveMessage(ByteBuf message) {
         checkIsInEventLoop("receiveMessage");
         try {
-            while(message.isReadable() && !throttled.get()) {
-                if (bb != null) {
+            while(message.isReadable() && !throttled.get()) { // 当writerIndex > readerIndex，并且不节流时，满足条件
+                if (bb != null) {// 不为null
                     if (LOG.isTraceEnabled()) {
                         LOG.trace("message readable {} bb len {} {}",
                                 message.readableBytes(),
@@ -447,11 +460,14 @@ public class NettyServerCnxn extends ServerCnxn {
                                 ByteBufUtil.hexDump(Unpooled.wrappedBuffer(dat)));
                     }
 
-                    if (bb.remaining() > message.readableBytes()) {
+                    if (bb.remaining() > message.readableBytes()) { // bb剩余空间大于message中可读字节大小
+                        // 确定新的limit
                         int newLimit = bb.position() + message.readableBytes();
                         bb.limit(newLimit);
                     }
+                    // 将message写入bb中
                     message.readBytes(bb);
+                    // 重置bb的limit
                     bb.limit(bb.capacity());
 
                     if (LOG.isTraceEnabled()) {
@@ -465,73 +481,85 @@ public class NettyServerCnxn extends ServerCnxn {
                                 Long.toHexString(sessionId),
                                 ByteBufUtil.hexDump(Unpooled.wrappedBuffer(dat)));
                     }
-                    if (bb.remaining() == 0) {
+                    if (bb.remaining() == 0) { // 已经读完message，表示内容已经全部接收
+                        // 统计接收信息
                         packetReceived();
+                        // 翻转，可读
                         bb.flip();
 
                         ZooKeeperServer zks = this.zkServer;
-                        if (zks == null || !zks.isRunning()) {
+                        if (zks == null || !zks.isRunning()) { // Zookeeper服务器为空
                             throw new IOException("ZK down");
                         }
-                        if (initialized) {
+                        if (initialized) { // 未被初始化
                             // TODO: if zks.processPacket() is changed to take a ByteBuffer[],
-                            // we could implement zero-copy queueing.
+                            // we could implement zero-copy queueing. // 处理bb中包含的包信息
                             zks.processPacket(this, bb);
 
-                            if (zks.shouldThrottle(outstandingCount.incrementAndGet())) {
+                            if (zks.shouldThrottle(outstandingCount.incrementAndGet())) {  // 是否已经节流
+                                // 不接收数据
                                 disableRecvNoWait();
                             }
-                        } else {
+                        } else { // 已经初始化
                             if (LOG.isDebugEnabled()) {
                                 LOG.debug("got conn req request from {}",
                                         getRemoteSocketAddress());
                             }
+                            // 处理连接请求
                             zks.processConnectRequest(this, bb);
                             initialized = true;
                         }
                         bb = null;
                     }
-                } else {
+                } else {// bb为null
                     if (LOG.isTraceEnabled()) {
                         LOG.trace("message readable {} bblenrem {}",
                                 message.readableBytes(),
                                 bbLen.remaining());
+                        // 复制bbLen缓冲
                         ByteBuffer dat = bbLen.duplicate();
+                        // 翻转
                         dat.flip();
                         LOG.trace("0x{} bbLen {}",
                                 Long.toHexString(sessionId),
                                 ByteBufUtil.hexDump(Unpooled.wrappedBuffer(dat)));
                     }
 
+                    // bb剩余空间大于message中可读字节大小
                     if (message.readableBytes() < bbLen.remaining()) {
+                        // 重设bbLen的limit
                         bbLen.limit(bbLen.position() + message.readableBytes());
                     }
+                    // 将message内容写入bbLen中
                     message.readBytes(bbLen);
+                    // 重置bbLen的limit
                     bbLen.limit(bbLen.capacity());
-                    if (bbLen.remaining() == 0) {
-                        bbLen.flip();
+                    if (bbLen.remaining() == 0) { // 已经读完message，表示内容已经全部接收
+                        bbLen.flip(); // 翻转
 
                         if (LOG.isTraceEnabled()) {
                             LOG.trace("0x{} bbLen {}",
                                     Long.toHexString(sessionId),
                                     ByteBufUtil.hexDump(Unpooled.wrappedBuffer(bbLen)));
                         }
+                        // 读取position后四个字节
                         int len = bbLen.getInt();
                         if (LOG.isTraceEnabled()) {
                             LOG.trace("0x{} bbLen len is {}",
                                     Long.toHexString(sessionId),
                                     len);
                         }
-
+                        // 清除缓存
                         bbLen.clear();
-                        if (!initialized) {
-                            if (checkFourLetterWord(channel, message, len)) {
+                        if (!initialized) { // 未被初始化
+                            if (checkFourLetterWord(channel, message, len)) { // 是否是四个字母的命令
                                 return;
                             }
                         }
                         if (len < 0 || len > BinaryInputArchive.maxBuffer) {
                             throw new IOException("Len error " + len);
                         }
+                        // 根据len重新分配缓冲，以便接收内容
                         bb = ByteBuffer.allocate(len);
                     }
                 }

@@ -77,19 +77,25 @@ public abstract class ServerCnxn implements Stats, Watcher {
         // Make space for length
         BinaryOutputArchive bos = BinaryOutputArchive.getArchive(baos);
         try {
+            // 向baos中写入四个字节(空)
             baos.write(fourBytes);
+            // 写入记录
             bos.writeRecord(h, "header");
             if (r != null) {
+                // 写入记录
                 bos.writeRecord(r, tag);
             }
-            baos.close();
+            baos.close();// 关闭
         } catch (IOException e) {
             LOG.error("Error serializing response");
         }
+        // 转化为Byte Array
         byte b[] = baos.toByteArray();
         serverStats().updateClientResponseSize(b.length - 4);
+        // 将Byte Array封装成ByteBuffe
         ByteBuffer bb = ByteBuffer.wrap(b);
         bb.putInt(b.length - 4).rewind();
+        // 发送缓冲
         sendBuffer(bb);
     }
 
