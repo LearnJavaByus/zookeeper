@@ -49,7 +49,7 @@ import org.apache.zookeeper.server.quorum.QuorumPeer.QuorumServer;
 import org.apache.zookeeper.server.quorum.QuorumPeer.ServerState;
 
 /**
- * @deprecated This class has been deprecated as of release 3.4.0. 
+ * @deprecated This class has been deprecated as of release 3.4.0.  在消息中加入了认证信息
  */
 @Deprecated
 public class AuthFastLeaderElection implements Election {
