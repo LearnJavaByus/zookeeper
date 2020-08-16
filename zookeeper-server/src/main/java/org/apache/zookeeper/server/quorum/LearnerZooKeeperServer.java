@@ -36,9 +36,10 @@ import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 public abstract class LearnerZooKeeperServer extends QuorumZooKeeperServer {
 
     /*
-     * Request processors
+     * Request processors // 提交请求处理器
      */
     protected CommitProcessor commitProcessor;
+    // 同步请求处理器
     protected SyncRequestProcessor syncProcessor;
 
     public LearnerZooKeeperServer(FileTxnSnapLog logFactory, int tickTime,

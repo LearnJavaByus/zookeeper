@@ -33,6 +33,7 @@ import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
  * A ZooKeeperServer for the Observer node type. Not much is different, but
  * we anticipate specializing the request processors in the future. 
  *
+ * Observer服务器，继承了LearnerZooKeeper。
  */
 public class ObserverZooKeeperServer extends LearnerZooKeeperServer {
     private static final Logger LOG =
@@ -40,7 +41,7 @@ public class ObserverZooKeeperServer extends LearnerZooKeeperServer {
     
     /**
      * Enable since request processor for writing txnlog to disk and
-     * take periodic snapshot. Default is ON.
+     * take periodic snapshot. Default is ON.  // 同步处理器是否可用
      */
     
     private boolean syncRequestProcessorEnabled = this.self.getSyncEnabled();
@@ -74,11 +75,11 @@ public class ObserverZooKeeperServer extends LearnerZooKeeperServer {
      * @param request
      */
     public void commitRequest(Request request) {     
-        if (syncRequestProcessorEnabled) {
+        if (syncRequestProcessorEnabled) {  // 同步处理器可用
             // Write to txnlog and take periodic snapshot
-            syncProcessor.processRequest(request);
+            syncProcessor.processRequest(request); // 使用同步处理器处理请求
         }
-        commitProcessor.commit(request);        
+        commitProcessor.commit(request);          // 提交请求
     }
     
     /**
@@ -116,13 +117,13 @@ public class ObserverZooKeeperServer extends LearnerZooKeeperServer {
      * Process a sync request
      */
     synchronized public void sync(){
-        if(pendingSyncs.size() ==0){
+        if(pendingSyncs.size() ==0){ // 没有未完成的同步请求
             LOG.warn("Not expecting a sync.");
             return;
         }
-                
+        // 移除队首元素
         Request r = pendingSyncs.remove();
-        commitProcessor.commit(r);
+        commitProcessor.commit(r);   // 提交请求
     }
     
     @Override

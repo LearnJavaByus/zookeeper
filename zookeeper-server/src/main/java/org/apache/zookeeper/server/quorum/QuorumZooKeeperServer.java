@@ -36,6 +36,8 @@ import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 /**
  * Abstract base class for all ZooKeeperServers that participate in
  * a quorum.
+ *
+ * 所有参与选举的服务器的父类，是抽象类，其继承了ZooKeeperServer类。
  */
 public abstract class QuorumZooKeeperServer extends ZooKeeperServer {
 

@@ -93,19 +93,25 @@ public class MBeanRegistry {
     public void register(ZKMBeanInfo bean, ZKMBeanInfo parent)
         throws JMException
     {
+        // 确保bean不为空
         assert bean != null;
         String path = null;
-        if (parent != null) {
+        if (parent != null) {   // parent(ServerBean)不为空
+            // 通过parent从bean2Path中获取path
             path = mapBean2Path.get(parent);
-            assert path != null;
+            assert path != null; // 确保path不为空
         }
+        // 补充为完整的路径
         path = makeFullPath(path, parent);
         if(bean.isHidden())
             return;
+        // 使用路径来创建名字
         ObjectName oname = makeObjectName(path, bean);
         try {
             synchronized (LOCK) {
+                // 注册Server
                 mBeanServer.registerMBean(bean, oname);
+                // 将bean和对应path放入mapBean2Path
                 mapBean2Path.put(bean, path);
             }
         } catch (JMException e) {
@@ -146,9 +152,10 @@ public class MBeanRegistry {
     public void unregister(ZKMBeanInfo bean) {
         if(bean==null)
             return;
+        // 获取对应路径 , // 从mapBean2Path和mapName2Bean中移除bean
         String path = mapBean2Path.remove(bean);
         try {
-            unregister(path,bean);
+            unregister(path,bean);// 取消注册
         } catch (JMException e) {
             LOG.warn("Error during unregister of [{}]", bean.getName(), e);
         } catch (Throwable t) {
